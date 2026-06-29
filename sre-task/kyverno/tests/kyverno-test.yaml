@@ -1,0 +1,56 @@
+name: test-kyverno-policies
+policies:
+    - ../policies/require-labels.yaml
+    - ../policies/disallow-latest.yaml
+resources:
+    - name: good-pod
+      resource:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+              name: good-pod
+              labels:
+                  team: alpha
+          spec:
+              containers:
+                  - name: nginx
+                    image: nginx:1.21
+    - name: bad-pod-no-label
+      resource:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+              name: bad-pod-no-label
+          spec:
+              containers:
+                  - name: nginx
+                    image: nginx:1.21
+    - name: bad-pod-latest-tag
+      resource:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+              name: bad-pod-latest-tag
+              labels:
+                  team: alpha
+          spec:
+              containers:
+                  - name: nginx
+                    image: nginx:latest
+results:
+    - policy: require-labels
+      rule: check-for-team-label
+      resource: good-pod
+      status: pass
+    - policy: require-labels
+      rule: check-for-team-label
+      resource: bad-pod-no-label
+      status: fail
+    - policy: disallow-latest-tag
+      rule: require-image-tag
+      resource: good-pod
+      status: pass
+    - policy: disallow-latest-tag
+      rule: require-image-tag
+      resource: bad-pod-latest-tag
+      status: fail

@@ -1,0 +1,133 @@
+---
+- name: Установка Kyverno MVP стенда
+  hosts: all
+  become: yes
+  tasks:
+      - name: Установка Docker и зависимостей
+        apt:
+            name:
+                - docker.io
+                - curl
+                - wget
+                - gnupg
+                - software-properties-common
+            state: present
+            update_cache: yes
+
+      - name: Запуск Docker
+        service:
+            name: docker
+            state: started
+            enabled: yes
+
+      - name: Добавление пользователя в группу docker
+        user:
+            name: ubuntu
+            groups: docker
+            append: yes
+
+      - name: Установка kubectl
+        shell: |
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+        args:
+            creates: /usr/local/bin/kubectl
+
+      - name: Установка Kind
+        shell: |
+            curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+            chmod +x ./kind
+            mv ./kind /usr/local/bin/kind
+        args:
+            creates: /usr/local/bin/kind
+
+      - name: Копирование конфига Kind
+        copy:
+            src: ../kind/kind-config.yaml
+            dest: /home/ubuntu/kind-config.yaml
+
+      - name: Создание Kind кластера
+        shell: kind create cluster --config /home/ubuntu/kind-config.yaml
+        args:
+            creates: /home/ubuntu/.kube/config
+        become_user: ubuntu
+
+      - name: Копирование kubeconfig для пользователя
+        shell: |
+            mkdir -p /home/ubuntu/.kube
+            cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config 2>/dev/null || kind get kubeconfig > /home/ubuntu/.kube/config
+            chown -R ubuntu:ubuntu /home/ubuntu/.kube
+        become_user: ubuntu
+
+      - name: Установка Helm
+        shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        args:
+            creates: /usr/local/bin/helm
+
+      - name: Создание namespace для ArgoCD
+        shell: kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+        become_user: ubuntu
+
+      - name: Установка ArgoCD
+        shell: |
+            kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+        become_user: ubuntu
+
+      - name: Ожидание готовности ArgoCD
+        shell: kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
+        become_user: ubuntu
+        ignore_errors: yes
+
+      - name: Установка Ingress NGINX
+        shell: |
+            kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+        become_user: ubuntu
+
+      - name: Добавление репозитория prometheus-community
+        shell: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+        become_user: ubuntu
+
+      - name: Обновление репозиториев Helm
+        shell: helm repo update
+        become_user: ubuntu
+
+      - name: Установка kube-prometheus-stack
+        shell: |
+            helm install prometheus prometheus-community/kube-prometheus-stack \
+              -n monitoring --create-namespace \
+              --set prometheus.prometheusSpec.storageSpec.volumeSize=5Gi \
+              --set grafana.persistence.size=2Gi \
+              --set grafana.service.type=NodePort \
+              --wait
+        become_user: ubuntu
+
+      - name: Добавление репозитория Kyverno
+        shell: helm repo add kyverno https://kyverno.github.io/kyverno
+        become_user: ubuntu
+
+      - name: Обновление репозиториев Helm
+        shell: helm repo update
+        become_user: ubuntu
+
+      - name: Установка Kyverno
+        shell: |
+            helm install kyverno kyverno/kyverno -n kyverno --create-namespace --wait
+        become_user: ubuntu
+
+      - name: Добавление репозитория Policy Reporter
+        shell: helm repo add policy-reporter https://kyverno.github.io/policy-reporter
+        become_user: ubuntu
+
+      - name: Установка Policy Reporter
+        shell: |
+            helm install policy-reporter policy-reporter/policy-reporter -n policy-reporter --create-namespace --wait
+        become_user: ubuntu
+
+      - name: Копирование политик Kyverno
+        copy:
+            src: ../kyverno/policies/
+            dest: /home/ubuntu/kyverno-policies/
+
+      - name: Применение политик
+        shell: kubectl apply -f /home/ubuntu/kyverno-policies/
+        become_user: ubuntu

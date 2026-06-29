@@ -1,0 +1,25 @@
+name: Kyverno Policy Tests
+
+on:
+    pull_request:
+        paths:
+            - "kyverno/policies/**"
+            - "kyverno/tests/**"
+    push:
+        paths:
+            - "kyverno/policies/**"
+            - "kyverno/tests/**"
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Install Kyverno CLI
+              uses: kyverno/action-install-cli@v1
+
+            - name: Run Kyverno tests
+              run: |
+                  kyverno test ./kyverno/tests/
