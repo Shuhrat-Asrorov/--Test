@@ -153,3 +153,64 @@ help – справка
 ```
 
 Плейбук выполнит все шаги (установка зависимостей, K3s, настройка kubectl, установка Istio и Harbor). Процесс займёт 5–7 минут.
+
+# SRE – Kyverno MVP
+
+Развёртывание пилотного стенда Kyverno для защиты Kubernetes от некорректных и опасных конфигураций.  
+Решение автоматизировано с помощью Ansible и разворачивается на чистой виртуальной машине Ubuntu 22.04 одной командой.
+
+## Требования
+
+- **Целевая ВМ:** Ubuntu 22.04 LTS (amd64), 8 ГБ RAM (рекомендуется), доступ по SSH с пользователем в группе `sudoers`.
+- **Управляющая машина:** установлен Ansible (2.9+), SSH-клиент.
+- Для локального тестирования на macOS можно использовать **Multipass**:
+
+```bash
+    brew install multipass
+    multipass launch -n sre-vm --memory 8G --disk 20G --cpus 4 22.04
+    multipass info sre-vm   # запомните IPv4
+    multipass transfer ~/.ssh/id_rsa.pub sre-vm:/home/ubuntu/.ssh/authorized_keys
+```
+
+Сборка и запуск:
+
+1. Заполните inventory.ini реальными данными вашей ВМ:
+
+```ini
+    [k3s-cluster]
+    <IP-ВМ> ansible_user=ubuntu ansible_ssh_private_key_file=/путь/к/приватному/ключу
+```
+
+2. Проверьте доступность:
+
+```bash
+    ansible -i inventory.ini k3s-cluster -m ping
+```
+
+Должен вернуться pong.
+
+Запуск автоматизации
+
+```bash
+    ansible-playbook -i inventory.ini ansible/playbook.yml
+```
+
+Плейбук выполнит:
+
+- установку Docker, kubectl, Kind, Helm;
+
+- создание Kubernetes-кластера с помощью Kind (с пробросом портов);
+
+- установку ArgoCD;
+
+- установку Ingress-контроллера (NGINX);
+
+- установку Prometheus и Grafana (kube-prometheus-stack);
+
+- установку Kyverno;
+
+- установку Policy Reporter для визуализации политик;
+
+- применение двух примеров политик Kyverno.
+
+Процесс займёт 5–10 минут.
