@@ -1,0 +1,19 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+    name: hello-world-abort
+    namespace: test-app
+spec:
+    hosts:
+        - "hello-world.test-app.svc.cluster.local"
+    http:
+        - fault:
+              abort:
+                  percentage:
+                      value: 30.0
+                  httpStatus: 500
+          route:
+              - destination:
+                    host: hello-world
+                    port:
+                        number: 80

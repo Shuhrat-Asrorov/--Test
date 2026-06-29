@@ -1,0 +1,62 @@
+---
+- name: Установка K3s Kubernetes кластера
+  hosts: all
+  become: yes
+  tasks:
+      - name: Установка зависимостей
+        apt:
+            name:
+                - curl
+                - wget
+                - gnupg
+                - software-properties-common
+            state: present
+            update_cache: yes
+
+      - name: Установка K3s
+        shell: curl -sfL https://get.k3s.io | sh -
+        args:
+            creates: /usr/local/bin/k3s
+
+      - name: Копирование конфига kubectl для пользователя
+        shell: |
+            mkdir -p /home/ubuntu/.kube
+            cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
+            chown -R ubuntu:ubuntu /home/ubuntu/.kube
+        args:
+            creates: /home/ubuntu/.kube/config
+
+      - name: Установка Helm
+        shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        args:
+            creates: /usr/local/bin/helm
+
+      - name: Добавление репозитория Istio
+        shell: helm repo add istio https://istio-release.storage.googleapis.com/charts
+        args:
+            creates: /home/ubuntu/.cache/helm/repository/istio-index.yaml
+
+      - name: Установка Istio base
+        shell: helm install istio-base istio/base -n istio-system --create-namespace --wait
+        args:
+            creates: /home/ubuntu/.cache/helm/istio-base
+
+      - name: Установка Istio istiod
+        shell: helm install istiod istio/istiod -n istio-system --wait
+        args:
+            creates: /home/ubuntu/.cache/helm/istiod
+
+      - name: Установка Istio ingress gateway
+        shell: helm install istio-ingressgateway istio/gateway -n istio-ingress --create-namespace --wait
+        args:
+            creates: /home/ubuntu/.cache/helm/istio-ingressgateway
+
+      - name: Добавление репозитория Harbor
+        shell: helm repo add harbor https://helm.goharbor.io
+        args:
+            creates: /home/ubuntu/.cache/helm/repository/harbor-index.yaml
+
+      - name: Установка Harbor
+        shell: helm install harbor harbor/harbor -n harbor --create-namespace --set expose.type=nodePort --set expose.tls.enabled=false --wait
+        args:
+            creates: /home/ubuntu/.cache/helm/harbor

@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+    name: test-app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: hello-world
+    namespace: test-app
+spec:
+    replicas: 2
+    selector:
+        matchLabels:
+            app: hello-world
+    template:
+        metadata:
+            labels:
+                app: hello-world
+        spec:
+            containers:
+                - name: hello-world
+                  image: gcr.io/google-samples/hello-app:1.0
+                  ports:
+                      - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: hello-world
+    namespace: test-app
+spec:
+    selector:
+        app: hello-world
+    ports:
+        - port: 80
+          targetPort: 8080
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+    name: hello-world
+    namespace: test-app
+spec:
+    hosts:
+        - "hello-world.test-app.svc.cluster.local"
+    http:
+        - route:
+              - destination:
+                    host: hello-world
+                    port:
+                        number: 80
